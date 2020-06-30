@@ -35,8 +35,8 @@ import com.alipay.sofa.jraft.conf.Configuration;
 import com.alipay.sofa.jraft.core.NodeImpl;
 import com.alipay.sofa.jraft.entity.PeerId;
 import com.alipay.sofa.jraft.entity.Task;
+import com.alipay.sofa.jraft.error.RaftError;
 import com.alipay.sofa.jraft.option.NodeOptions;
-import com.alipay.sofa.jraft.option.RaftOptions;
 import com.alipay.sofa.jraft.rpc.ClientService;
 import com.alipay.sofa.jraft.rpc.RpcResponseClosure;
 import com.baidu.hugegraph.HugeException;
@@ -48,6 +48,7 @@ import com.baidu.hugegraph.backend.store.raft.RaftRequests.StoreCommandResponse;
 import com.baidu.hugegraph.config.CoreOptions;
 import com.baidu.hugegraph.config.HugeConfig;
 import com.baidu.hugegraph.util.CodeUtil;
+import com.baidu.hugegraph.util.E;
 import com.baidu.hugegraph.util.Log;
 import com.google.protobuf.ZeroByteStringHelper;
 
@@ -107,12 +108,11 @@ public class RaftNode {
             nodeOptions.setSnapshotUri(snapshotUri);
         }
 
-        RaftOptions raftOptions = nodeOptions.getRaftOptions();
-        raftOptions.setDisruptorBufferSize(32768);
-//        raftOptions.setReplicatorPipeline(false);
-
-        nodeOptions.setRpcProcessorThreadPoolSize(48);
-        nodeOptions.setEnableMetrics(false);
+        // RaftOptions raftOptions = nodeOptions.getRaftOptions();
+        // raftOptions.setDisruptorBufferSize(32768);
+        // raftOptions.setReplicatorPipeline(false);
+        // nodeOptions.setRpcProcessorThreadPoolSize(48);
+        // nodeOptions.setEnableMetrics(false);
 
         RaftGroupService raftGroupService;
         // Shared rpc server
@@ -156,7 +156,7 @@ public class RaftNode {
         task.setDone(closure);
         // compress return BytesBuffer
         ByteBuffer buffer = CodeUtil.compress(command.toBytes()).asByteBuffer();
-        LOG.debug("The bytes size of command {} is {}",
+        LOG.debug("The bytes size of command(compressed) {} is {}",
                   command.action(), buffer.limit());
         task.setData(buffer);
         LOG.debug("submit to raft node {}", this.node);
@@ -180,10 +180,12 @@ public class RaftNode {
             public void setResponse(StoreCommandResponse resp) {
                 if (resp.getStatus()) {
                     LOG.debug("StoreCommandResponse status ok");
-                    closure.complete(null);
+                    closure.complete(Status.OK(), null);
                 } else {
                     LOG.debug("StoreCommandResponse status error");
-                    closure.failure(new BackendException(
+                    Status status = new Status(RaftError.UNKNOWN,
+                                               "fowared request failed");
+                    closure.failure(status, new BackendException(
                                     "Current node isn't leader, leader is " +
                                     "[%s], failed to forward request to " +
                                     "leader: %s", leaderId, resp.getMessage()));
@@ -195,12 +197,13 @@ public class RaftNode {
                 closure.run(status);
             }
         };
+
+        ClientService rpcClient = ((NodeImpl) this.node).getRpcService();
+        E.checkNotNull(rpcClient, "rpc client");
+        E.checkNotNull(leaderId.getEndpoint(), "leader endpoint");
         try {
-            NodeImpl nodeImpl = (NodeImpl) this.node;
-            ClientService rpcClient = nodeImpl.getRpcService();
             rpcClient.invokeWithDone(leaderId.getEndpoint(), request,
-                                     responseClosure, 3000)
-                     .get();
+                                     responseClosure, 3000).get();
         } catch (InterruptedException | ExecutionException e) {
             throw new BackendException("Failed to invoke rpc request", e);
         }

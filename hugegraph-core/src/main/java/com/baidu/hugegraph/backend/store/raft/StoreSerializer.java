@@ -93,8 +93,8 @@ public class StoreSerializer {
     }
 
     public static BackendMutation readMutation(BytesBuffer buffer) {
-        BackendMutation mutation = new BackendMutation();
         int size = buffer.readVInt();
+        BackendMutation mutation = new BackendMutation(size);
         for (int i = 0; i < size; i++) {
             // read action
             Action action = Action.fromCode(buffer.read());

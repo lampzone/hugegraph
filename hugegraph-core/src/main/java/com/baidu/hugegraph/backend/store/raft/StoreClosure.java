@@ -35,7 +35,7 @@ public class StoreClosure implements Closure {
 
     private static final Logger LOG = Log.logger(StoreClosure.class);
 
-    // seconds
+    // unit seconds
     private static final int FUTURE_TIMEOUT = 30;
 
     private final StoreCommand command;
@@ -52,6 +52,10 @@ public class StoreClosure implements Closure {
 
     public CompletableFuture<RaftResult> future() {
         return this.future;
+    }
+
+    public Status status() {
+        return this.get().status();
     }
 
     public Object data() {
@@ -73,34 +77,40 @@ public class StoreClosure implements Closure {
         }
     }
 
-    public void complete(Object data) {
-        this.future.complete(new RaftResult(data, null));
+    public void complete(Status status, Object data) {
+        this.future.complete(new RaftResult(status, data, null));
     }
 
-    public void failure(Throwable ex) {
-        this.future.complete(new RaftResult(null, ex));
+    public void failure(Status status, Throwable ex) {
+        this.future.complete(new RaftResult(status, null, ex));
     }
 
     @Override
     public void run(Status status) {
         if (status.isOk()) {
-            this.complete(null);
+            this.complete(status, null);
         } else {
             LOG.error("Failed to apply command: {}", status);
-            this.failure(new BackendException("Failed to apply command in " +
-                                              "raft node with error : %s",
-                                              status.getErrorMsg()));
+            String msg = "Failed to apply command in raft node with error : " +
+                         status.getErrorMsg();
+            this.failure(status, new BackendException(msg));
         }
     }
 
     public static class RaftResult {
 
+        private Status status;
         private Object data;
-        private Throwable e;
+        private Throwable t;
 
-        public RaftResult(Object data, Throwable e) {
+        public RaftResult(Status status, Object data, Throwable t) {
+            this.status = status;
             this.data = data;
-            this.e = e;
+            this.t = t;
+        }
+
+        public Status status() {
+            return this.status;
         }
 
         public Object data() {
@@ -108,7 +118,7 @@ public class StoreClosure implements Closure {
         }
 
         public Throwable throwable() {
-            return this.e;
+            return this.t;
         }
     }
 }

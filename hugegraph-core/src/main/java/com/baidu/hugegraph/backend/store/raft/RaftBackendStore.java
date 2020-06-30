@@ -25,6 +25,8 @@ import java.util.List;
 
 import org.slf4j.Logger;
 
+import com.alipay.sofa.jraft.Status;
+import com.alipay.sofa.jraft.error.RaftError;
 import com.baidu.hugegraph.backend.BackendException;
 import com.baidu.hugegraph.backend.query.Query;
 import com.baidu.hugegraph.backend.store.BackendEntry;
@@ -244,11 +246,23 @@ public class RaftBackendStore implements BackendStore {
         StoreClosure closure = new StoreClosure(command);
         this.node().submitCommand(command, closure);
         // Here will wait future complete
+        if (isFailedToSendRpc(closure)) {
+            // throw busy exception
+            throw new BackendException("The raft backend store is busy");
+        }
         if (closure.throwable() != null) {
             throw new BackendException(closure.throwable());
         } else {
             return closure.data();
         }
+    }
+
+    private static boolean isFailedToSendRpc(StoreClosure closure) {
+        Status status = closure.status();
+        String expectMsgPrefix = "Fail to send a RPC request";
+        return RaftError.EINTERNAL == status.getRaftError() &&
+               status.getErrorMsg() != null &&
+               status.getErrorMsg().startsWith(expectMsgPrefix);
     }
 
     private static class MutationBatch {
