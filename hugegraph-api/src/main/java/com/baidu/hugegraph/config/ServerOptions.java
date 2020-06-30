@@ -126,6 +126,7 @@ public class ServerOptions extends OptionHolder {
                     2 * Runtime.getRuntime().availableProcessors()
             );
 
+    // TODO: Do not allow users to specify
     public static final ConfigListOption<String> GRAPHS =
             new ConfigListOption<>(
                     "graphs",
@@ -194,7 +195,6 @@ public class ServerOptions extends OptionHolder {
                     disallowEmpty(),
                     "hugegraph"
             );
-
 
     public static final ConfigOption<String> ADMIN_TOKEN =
             new ConfigOption<>(
